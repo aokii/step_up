@@ -5,7 +5,6 @@ use std::{
     fmt::{Debug, Formatter},
     ops::Deref,
 };
-use std::collections::HashMap;
 use std::env::Args;
 use std::fmt::Display;
 use std::io::Write;
@@ -22,11 +21,12 @@ use serde_json::Value;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-const EXEC_TIME: [u32; 5] = [6, 9, 12, 15, 18];
+const EXEC_TIME: [u32; 5] = [6, 9, 12, 17, 18];
 const MAX_STEPS: u32 = 150000;
 
-#[tokio::main]
-async fn main() {
+
+// #[tokio::main]
+fn main() {
     env_logger::Builder::from_default_env()
         .format(|buf, record| {
             writeln!(buf,
@@ -40,10 +40,10 @@ async fn main() {
 
     let mut param = Param::new(std::env::args());
     if !param.custom {
-        param.steps = get_step().await.unwrap() as u32;
+        param.steps = get_step().unwrap() as u32;
     }
     log::debug!("param {:?}",param);
-    sync_step(&param).await;
+    sync_step(&param);
     log::info!("执行完成，更新步数：{}",param.steps);
 }
 
@@ -87,48 +87,46 @@ impl Param {
 }
 
 
-async fn sync_step(parma: &Param) {
-    let access_code = match get_access_code(parma.account.as_str(), parma.password.as_str()).await {
+fn sync_step(parma: &Param) {
+    let access_code = match get_access_code(parma.account.as_str(), parma.password.as_str()) {
         Ok(v) => v,
         Err(_) => {
             panic!("登录失败")
         }
     };
-    let (user_id, login_token) = match get_login_token(&access_code).await {
+
+    let (user_id, login_token) = match get_login_token(&access_code) {
         Ok(value) => value,
         Err(_) => {
             panic!("获取login token 失败")
         }
     };
     log::debug!("user_id : {}, token : {}", user_id, login_token);
-    let app_token = match get_app_token(&login_token).await {
+    let app_token = match get_app_token(&login_token) {
         Ok(x) => x,
         Err(_) => {
             panic!("获取login token 失败")
         }
     };
     log::debug!("app_token : {}", app_token);
-    upload_step(&user_id, &app_token, parma.steps).await
+    upload_step(&user_id, &app_token, parma.steps);
 }
 
 
-async fn get_step() -> Result<u32> {
-    let mut coefficients = HashMap::new();
-    coefficients.insert("多云", 0.9);
-    coefficients.insert("阴", 0.8);
-    coefficients.insert("小雨", 0.7);
-    coefficients.insert("中雨", 0.6);
-    coefficients.insert("大雨", 0.5);
-    coefficients.insert("暴雨", 0.3);
-    coefficients.insert("大暴雨", 0.3);
-    coefficients.insert("特大暴雨", 0.3);
+fn get_step() -> Result<u32> {
+    let weather = get_weather("上海")?;
+    let weather = weather.as_str();
+    let coefficient = match weather {
+        "晴" => 0.9,
+        "多云" => 0.85,
+        "阴" => 0.8,
+        "小雨" => 0.7,
+        "中雨" => 0.6,
+        "大雨" => 0.5,
+        "暴雨" | "大暴雨" | "特大暴雨" => 0.3,
+        _ => 0.1
+    };
     let hour = Local::now().time().hour();
-
-
-    let string = get_weather("上海").await.unwrap();
-
-    let coefficient = coefficients.get(string.as_str()).unwrap();
-
     match EXEC_TIME.binary_search(&hour) {
         Ok(mut index) => {
             index += 1;
@@ -144,9 +142,9 @@ async fn get_step() -> Result<u32> {
 ///
 /// 获取时间戳
 ///
-async fn get_timestamp() -> String {
+fn get_timestamp() -> String {
     let url = "http://api.m.taobao.com/rest/api3.do?api=mtop.common.getTimestamp";
-    let value = reqwest::Client::new().get(url).send().await.unwrap().json::<Value>().await.unwrap();
+    let value = reqwest::blocking::Client::new().get(url).send().unwrap().json::<Value>().unwrap();
     value["data"]["t"].as_str().unwrap().to_string()
 }
 
@@ -159,10 +157,10 @@ async fn get_timestamp() -> String {
 /// let weather = get_weather("上海");
 ///
 /// ```
-async fn get_weather(city: &str) -> Result<String> {
+fn get_weather(city: &str) -> Result<String> {
     let url = format!("http://wthrcdn.etouch.cn/weather_mini?city={}", urlencoding::encode(city));
-    let resp = reqwest::get(url).await?;
-    let data = resp.bytes().await?;
+    let resp = reqwest::blocking::get(url)?;
+    let data = resp.bytes()?;
     let reader = flate2::read::GzDecoder::new(data.deref());
     let json: Value = serde_json::from_reader(reader)?;
     Ok(json["data"]["forecast"][0]["type"].as_str().unwrap().to_string())
@@ -176,7 +174,7 @@ async fn get_weather(city: &str) -> Result<String> {
 /// get_access_code("123456","123456")
 ///
 /// ```
-async fn get_access_code(account: &str, password: &str) -> Result<String> {
+fn get_access_code(account: &str, password: &str) -> Result<String> {
     let url = format!("https://api-user.huami.com/registrations/+86{}/tokens", account);
     let mut headers = HeaderMap::new();
     headers.insert("Content-Type", HeaderValue::from_static("application/x-www-form-urlencoded;charset=UTF-8"));
@@ -187,15 +185,14 @@ async fn get_access_code(account: &str, password: &str) -> Result<String> {
         ("redirect_uri", "https://s3-us-west-2.amazonaws.com/hm-registration/successsignin.html"),
         ("token", "access")
     ];
-    let client = reqwest::Client::builder()
+    let client = reqwest::blocking::Client::builder()
         .redirect(Policy::custom(|s| { reqwest::redirect::Policy::none().redirect(s) }))
         .build()?;
     let response = client
         .post(url)
         .form(&params)
         .headers(headers)
-        .send()
-        .await?;
+        .send()?;
 
     let location = match response.headers().get("location") {
         Some(x) => x,
@@ -213,10 +210,10 @@ async fn get_access_code(account: &str, password: &str) -> Result<String> {
 /// # Examples
 ///
 /// ```
-/// get_login_token(get_access_code("123456","123456").await?)
+/// get_login_token(get_access_code("123456","123456")?)
 ///
 /// ```
-async fn get_login_token(access_code: &String) -> Result<(String, String)> {
+fn get_login_token(access_code: &String) -> Result<(String, String)> {
     let url = "https://account.huami.com/v2/client/login";
     let mut headers = HeaderMap::new();
     headers.insert("Content-Type", HeaderValue::from_static("application/x-www-form-urlencoded;charset=UTF-8"));
@@ -232,13 +229,12 @@ async fn get_login_token(access_code: &String) -> Result<(String, String)> {
         ("grant_type", "access_token"),
         ("third_name", "huami_phone"),
     ];
-    let response = reqwest::Client::new()
+    let response = reqwest::blocking::Client::new()
         .post(url)
         .form(&params)
         .headers(headers)
-        .send()
-        .await?;
-    let json: Value = serde_json::from_reader(response.bytes().await.unwrap().reader()).unwrap();
+        .send()?;
+    let json: Value = serde_json::from_reader(response.bytes().unwrap().reader()).unwrap();
     let value = json.get("token_info").unwrap();
     let login_token = value.get("login_token").unwrap().as_str().unwrap();
     let user_id = value.get("user_id").unwrap().as_str().unwrap();
@@ -246,14 +242,14 @@ async fn get_login_token(access_code: &String) -> Result<(String, String)> {
     Ok((user_id.to_string(), login_token.to_string()))
 }
 
-async fn get_app_token(login_token: &String) -> Result<String> {
+fn get_app_token(login_token: &String) -> Result<String> {
     let url = format!("https://account-cn.huami.com/v1/client/app_tokens?app_name=com.xiaomi.hm.health&dn=api-user.huami.com%2Capi-mifit.huami.com%2Capp-analytics.huami.com&login_token={}", login_token);
     log::debug!("get_app_token ulr : {}", url);
     let mut headers = HeaderMap::new();
     headers.insert("Content-Type", HeaderValue::from_static("application/x-www-form-urlencoded;charset=UTF-8"));
     headers.insert("User-Agent", HeaderValue::from_static("Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2"));
-    let response = reqwest::Client::new().get(url).headers(headers).send().await.unwrap();
-    let value = response.json::<Value>().await.unwrap();
+    let response = reqwest::blocking::Client::new().get(url).headers(headers).send().unwrap();
+    let value = response.json::<Value>().unwrap();
     log::debug!("value : {}", value);
     Ok(value["token_info"]["app_token"].as_str().unwrap().to_string())
 }
@@ -296,8 +292,8 @@ fn get_sync_data<T>(step: u32, date: DateTime<T>)
 /// ```
 ///
 /// ```
-async fn upload_step(user_id: &String, app_token: &String, steps: u32) {
-    let url = format!("https://api-mifit-cn.huami.com/v1/data/band_data.json?t={}", get_timestamp().await);
+fn upload_step(user_id: &String, app_token: &String, steps: u32) {
+    let url = format!("https://api-mifit-cn.huami.com/v1/data/band_data.json?t={}", get_timestamp());
     log::debug!("url : {}", url);
     let mut headers = HeaderMap::new();
     headers.insert("apptoken", HeaderValue::from_str(app_token.as_str()).unwrap());
@@ -313,8 +309,8 @@ async fn upload_step(user_id: &String, app_token: &String, steps: u32) {
         ("last_deviceid", "DA932FFFFE8816E7"),
         ("data_json", data)
     ];
-    let response = reqwest::Client::new().post(url).headers(headers).form(&params).send().await.unwrap();
-    let value = response.json::<Value>().await.unwrap();
+    let response = reqwest::blocking::Client::new().post(url).headers(headers).form(&params).send().unwrap();
+    let value = response.json::<Value>().unwrap();
     log::debug!("result : {}",value);
 }
 
