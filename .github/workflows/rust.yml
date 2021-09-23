@@ -19,15 +19,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    
+    # 设置服务器时区为东八区 
     - name: Set time zone
-      run: export TZ='Asia/Shanghai'
+      run: sudo timedatectl set-timezone 'Asia/Shanghai'
+      
     - name: Build
-      run: cargo build --verbose
+      run: cargo build
 #     - name: Run tests
 #       run: cargo test --verbose
     - name: Run
       run: |
-        account = ${{ secrets.ACCOUNT }}
-        password = ${{ secrets.PASSWORD }}
-        steps = ${{ secrets.STEPS }}
-        cargo run --package step_up --bin step_up "$account" "$password" "$steps"
+        cargo run --package step_up --bin step_up ${{ secrets.ACCOUNT }} ${{ secrets.PASSWORD }} ${{ secrets.STEPS }}
