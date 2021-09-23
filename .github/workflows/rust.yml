@@ -4,6 +4,10 @@ on:
   schedule:
     # * is a special character in YAML so you have to quote this string
     - cron:  '* 6,10,14,16,22 * * *'
+  watch:
+    types: started
+  workflow_dispatch:
+  
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
