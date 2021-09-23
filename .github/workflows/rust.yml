@@ -3,7 +3,7 @@ name: Rust
 on:
   schedule:
     # * is a special character in YAML so you have to quote this string
-    - cron:  '* 6,10,14,16,22 * * *'
+    - cron:  '* 6,9,12,15,18 * * *'
   watch:
     types: started
   workflow_dispatch:

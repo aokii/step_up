@@ -1,22 +1,17 @@
 extern crate env_logger;
 
-use core::fmt;
 use std::{
     error::Error,
     fmt::{Debug, Formatter},
     ops::Deref,
-    str::FromStr,
 };
 use std::collections::HashMap;
 use std::env::Args;
 use std::fmt::Display;
 use std::io::Write;
-use std::num::ParseIntError;
-use std::thread::Builder;
 
 use bytes::Buf;
 use chrono::{DateTime, Local, Timelike, TimeZone};
-use log::{Level, LevelFilter};
 use rand::prelude::*;
 use reqwest::{
     header::{HeaderMap, HeaderValue},
@@ -27,8 +22,8 @@ use serde_json::Value;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-const EXEC_TIME: [u32; 5] = [6, 10, 14, 16, 22];
-const MAX_STEPS: u32 = 60000;
+const EXEC_TIME: [u32; 5] = [6, 9, 12, 15, 18];
+const MAX_STEPS: u32 = 150000;
 
 #[tokio::main]
 async fn main() {
@@ -48,7 +43,7 @@ async fn main() {
         param.steps = get_step().await.unwrap() as u32;
     }
     log::debug!("param {:?}",param);
-    // sync_step(&param).await;
+    sync_step(&param).await;
     log::info!("执行完成，更新步数：{}",param.steps);
 }
 
@@ -67,7 +62,7 @@ impl Param {
         let account = args.next().expect("账号解析失败");
         let password = args.next().expect("密码解析失败");
         let mut steps = 0u32;
-        let mut custom = true;
+        let custom;
         match args.next() {
             None => {
                 custom = false;
@@ -95,13 +90,13 @@ impl Param {
 async fn sync_step(parma: &Param) {
     let access_code = match get_access_code(parma.account.as_str(), parma.password.as_str()).await {
         Ok(v) => v,
-        Err(e) => {
+        Err(_) => {
             panic!("登录失败")
         }
     };
     let (user_id, login_token) = match get_login_token(&access_code).await {
         Ok(value) => value,
-        Err(e) => {
+        Err(_) => {
             panic!("获取login token 失败")
         }
     };
@@ -140,7 +135,7 @@ async fn get_step() -> Result<u32> {
             let i: f64 = (index as f64 / EXEC_TIME.len() as f64) * coefficient + rand::thread_rng().gen_range(0.01..0.10);
             Ok((MAX_STEPS as f64 * i) as u32)
         }
-        Err(e) => {
+        Err(_) => {
             panic!("不在执行时间内")
         }
     }
@@ -166,7 +161,7 @@ async fn get_timestamp() -> String {
 /// ```
 async fn get_weather(city: &str) -> Result<String> {
     let url = format!("http://wthrcdn.etouch.cn/weather_mini?city={}", urlencoding::encode(city));
-    let mut resp = reqwest::get(url).await?;
+    let resp = reqwest::get(url).await?;
     let data = resp.bytes().await?;
     let reader = flate2::read::GzDecoder::new(data.deref());
     let json: Value = serde_json::from_reader(reader)?;
@@ -207,7 +202,7 @@ async fn get_access_code(account: &str, password: &str) -> Result<String> {
         None => { return Err(Box::new(ProcessError::Failed)); }
     }.to_str()?;
     let result = Url::parse(location)?;
-    let token = result.query_pairs().filter(|(cow1, cow2)| {
+    let token = result.query_pairs().filter(|(cow1, _)| {
         (*cow1).eq("access")
     }).next().unwrap().1.to_string();
     Ok(token)
@@ -284,9 +279,23 @@ fn get_sync_data<T>(step: u32, date: DateTime<T>)
         .replace("{step}", step.to_string().as_str())
 }
 
+
 ///
 /// 同步运动数据
 ///
+/// # Arguments
+///
+/// * `user_id`:
+/// * `app_token`:
+/// * `steps`:
+///
+/// returns: ()
+///
+/// # Examples
+///
+/// ```
+///
+/// ```
 async fn upload_step(user_id: &String, app_token: &String, steps: u32) {
     let url = format!("https://api-mifit-cn.huami.com/v1/data/band_data.json?t={}", get_timestamp().await);
     log::debug!("url : {}", url);
@@ -305,6 +314,8 @@ async fn upload_step(user_id: &String, app_token: &String, steps: u32) {
         ("data_json", data)
     ];
     let response = reqwest::Client::new().post(url).headers(headers).form(&params).send().await.unwrap();
+    let value = response.json::<Value>().await.unwrap();
+    log::debug!("result : {}",value);
 }
 
 
