@@ -27,7 +27,7 @@ use serde_json::Value;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-const EXEC_TIME: [u32; 5] = [6, 10, 14, 15, 22];
+const EXEC_TIME: [u32; 5] = [6, 10, 14, 16, 22];
 const MAX_STEPS: u32 = 60000;
 
 #[tokio::main]
