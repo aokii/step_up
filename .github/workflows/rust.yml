@@ -19,6 +19,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Set time zone
+      run: export TZ='Asia/Shanghai'
     - name: Build
       run: cargo build --verbose
 #     - name: Run tests
@@ -28,4 +30,4 @@ jobs:
         account =${{ secrets.ACCOUNT }}
         password = ${{ secrets.PASSWORD }}
         steps = ${{ secrets.STEPS }}
-        cargo run --package step_up --bin step_up "${account}" "${password}" "${steps}"
+        cargo run --package step_up --bin step_up "$account" "$password" "$steps"
