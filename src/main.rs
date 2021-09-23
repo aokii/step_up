@@ -48,8 +48,8 @@ async fn main() {
         param.steps = get_step().await.unwrap() as u32;
     }
     log::debug!("param {:?}",param);
-    sync_step(&param).await;
-    // log::info!("执行完成，更新步数：{}",param.steps);
+    // sync_step(&param).await;
+    log::info!("执行完成，更新步数：{}",param.steps);
 }
 
 
