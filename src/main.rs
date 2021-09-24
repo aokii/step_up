@@ -3,13 +3,11 @@ extern crate env_logger;
 use std::{
     error::Error,
     fmt::{Debug, Formatter},
-    ops::Deref,
 };
 use std::env::Args;
 use std::fmt::Display;
 use std::io::Write;
 
-use bytes::Buf;
 use chrono::{DateTime, Local, Timelike, TimeZone};
 use rand::prelude::*;
 use reqwest::{
@@ -25,7 +23,6 @@ const EXEC_TIME: [u32; 5] = [6, 9, 12, 17, 18];
 const MAX_STEPS: u32 = 100000;
 
 
-// #[tokio::main]
 fn main() {
     env_logger::Builder::from_default_env()
         .format(|buf, record| {
@@ -159,11 +156,9 @@ fn get_timestamp() -> String {
 /// ```
 fn get_weather(city: &str) -> Result<String> {
     let url = format!("http://wthrcdn.etouch.cn/weather_mini?city={}", urlencoding::encode(city));
-    let resp = reqwest::blocking::get(url)?;
-    let data = resp.bytes()?;
-    let reader = flate2::read::GzDecoder::new(data.deref());
-    let json: Value = serde_json::from_reader(reader)?;
-    Ok(json["data"]["forecast"][0]["type"].as_str().unwrap().to_string())
+    let client = reqwest::blocking::Client::builder().gzip(true).build()?;
+    let value = client.get(url).send()?.json::<Value>()?;
+    Ok(value["data"]["forecast"][0]["type"].as_str().unwrap().to_string())
 }
 
 
@@ -234,7 +229,7 @@ fn get_login_token(access_code: &String) -> Result<(String, String)> {
         .form(&params)
         .headers(headers)
         .send()?;
-    let json: Value = serde_json::from_reader(response.bytes().unwrap().reader()).unwrap();
+    let json: Value = response.json::<Value>()?;
     let value = json.get("token_info").unwrap();
     let login_token = value.get("login_token").unwrap().as_str().unwrap();
     let user_id = value.get("user_id").unwrap().as_str().unwrap();
